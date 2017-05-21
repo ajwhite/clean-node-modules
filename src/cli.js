@@ -1,4 +1,5 @@
 const path = require('path');
+const moment = require('moment')
 const meow = require('meow');
 const chalk = require('chalk')
 const Ora = require('ora')
@@ -18,21 +19,22 @@ const cli = meow(`
     $ clean-node-modules . -f
 `, {
   alias: {
-    f: 'force'
+    f: 'force',
+    d: 'days-old'
   }
 });
 const prompt = inquirer.createPromptModule();
 
-function cleanNodeModules (inputPath, force) {
+function cleanNodeModules (inputPath, force, daysOld) {
   const srcPath = inputPath ? path.resolve(process.cwd(), inputPath) : process.cwd()
 
   if (force) {
-    removeAll(srcPath)
+    removeAll(srcPath, daysOld)
   } else {
     const spinner = new Ora();
     spinner.text = 'Finding projects...'
     spinner.start()
-    getCandidates(srcPath).then(projects => {
+    getProjects(srcPath, daysOld).then(projects => {
       if (projects.length === 0) {
         spinner.fail('No projects found')
       } else {
@@ -49,6 +51,16 @@ function promptMessage (project) {
     `  Last modified: ${project.latestChange.fromNow()}`,
     `  Path: ${project.dir}`
   ].join('\n')
+}
+
+function getProjects(srcPath, daysOld) {
+  return getCandidates(srcPath).then(projects => {
+    if (daysOld) {
+      let before = moment().subtract(daysOld, 'days')
+      return projects.filter(project => project.latestChange.isBefore(before))
+    }
+    return projects
+  })
 }
 
 
@@ -74,16 +86,18 @@ function confirmRemoval(projects) {
       }, 2000)
     } else {
       spinner.fail(`Skipping ${project.name}`)
-      confirmRemoval(projects.slice(1))
+      if (projects.length > 1) {
+        confirmRemoval(projects.slice(1))
+      }
     }
   })
 }
 
-function removeAll (path) {
+function removeAll (path, daysOld) {
   const tasks = new Listr([
     {
       title: 'Finding projects',
-      task: (ctx) => getCandidates(path).then(projects => {
+      task: (ctx) => getProjects(path, daysOld).then(projects => {
         ctx.projects = projects
         return Promise.delay(1000)
       })
@@ -117,4 +131,4 @@ function removeAll (path) {
   tasks.run(baseCtx)
 }
 
-cleanNodeModules(cli.input[0], cli.flags.force);
+cleanNodeModules(cli.input[0], cli.flags.force, cli.flags.daysOld);

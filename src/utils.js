@@ -1,7 +1,8 @@
-const fs = require('fs')
+const Promise = require('bluebird')
 const path = require('path')
 const maxBy = require('lodash.maxby')
 const moment = require('moment')
+const fs = Promise.promisifyAll(require('fs'))
 
 function isPackageFile (file) {
   return file === 'package.json'
@@ -12,78 +13,79 @@ function isNodeModules (file) {
 }
 
 function listDirectories (srcPath) {
-  var files = fs.readdirSync(srcPath)
-    .filter(file => fs.lstatSync(path.join(srcPath, file)).isDirectory())
-    .map(dir => path.join(srcPath, dir))
-  return files;
+  return fs.readdirAsync(srcPath).then(files => {
+    return files
+      .filter(file => fs.lstatSync(path.join(srcPath, file)).isDirectory())
+      .map(dir => path.join(srcPath, dir))
+  })
 }
 
 function findPackage (srcPath) {
-  var files = fs.readdirSync(srcPath)
-  var package = files.find(file => isPackageFile(file));
-  if (!package) {
-    return null;
-  }
+  return fs.readdirAsync(srcPath).then(files => {
+    var package = files.find(file => isPackageFile(file));
+    if (!package) {
+      return null;
+    }
 
-  return path.join(srcPath, package);
+    return path.join(srcPath, package);
+  })
 }
 
 function findNodeModulesDirectory (srcPath) {
-  var files = fs.readdirSync(srcPath);
-  var nodeModulesDirectory = files.find(file => isNodeModules(file))
+  return fs.readdirAsync(srcPath).then(files => {
+    var nodeModulesDirectory = files.find(file => isNodeModules(file))
 
-  if (nodeModulesDirectory) {
-    let nodeModulesPath = path.join(srcPath, nodeModulesDirectory);
+    if (nodeModulesDirectory) {
+      let nodeModulesPath = path.join(srcPath, nodeModulesDirectory);
 
-    if (fs.statSync(nodeModulesPath).isDirectory()) {
-      return nodeModulesPath;
+      if (fs.statSync(nodeModulesPath).isDirectory()) {
+        return nodeModulesPath;
+      }
     }
-  }
 
-  return null;
+    return null;
+  })
 }
 
 function findNodeDirectories (path) {
-  var dirs = listDirectories(path);
-  var packages = [];
+  return listDirectories(path).then(dirs => {
+    var promises = dirs.map(dir => {
+      return Promise.all([
+        findPackage(dir),
+        findNodeModulesDirectory(dir)
+      ]).spread((package, nodeModules) => {
+        if (!package) {
+          return findNodeDirectories(dir)
+        }
+        return [{dir, package, nodeModules}]
+      })
+    })
 
-  dirs.forEach(dir => {
-    if (isNodeModules(dir)) {
-      return;
-    }
-
-    var package = findPackage(dir);
-    var nodeModules = findNodeModulesDirectory(dir);
-
-    if (!package) {
-      let innerPackages = findNodeDirectories(dir)
-      if (innerPackages.length > 0) {
-        packages = packages.concat(innerPackages)
-      }
-    } else {
-      packages.push({dir, package, nodeModules})
-    }
+    return Promise.all(promises).then(results => {
+      return results.reduce((flat, result) => flat.concat(result), [])
+    })
   })
-
-  return packages
 }
 
 function latestFileChanges (dir) {
   function allFiles (srcPath) {
-    var all = fs.readdirSync(srcPath)
-      .filter(file => !/(node_modules|.git)/.test(file))
+    return fs.readdirAsync(srcPath).then(all => {
+      all = all.filter(file => !/(node_modules|.git)/.test(file));
 
-    var {files, dirs} = all.reduce((map, file) => {
-      var filePath = path.join(srcPath, file)
-      if (fs.lstatSync(filePath).isDirectory()) {
-        map.dirs.push(filePath)
-      } else {
-        map.files.push(filePath)
-      }
-      return map
-    }, {files: [], dirs: []});
+      var {files, dirs} = all.reduce((map, file) => {
+        var filePath = path.join(srcPath, file)
+        if (fs.lstatSync(filePath).isDirectory()) {
+          map.dirs.push(filePath)
+        } else {
+          map.files.push(filePath)
+        }
+        return map
+      }, {files: [], dirs: []});
 
-    return files.concat(...dirs.map(allFiles))
+      return Promise.all(dirs.map(allFiles)).then(results => {
+        return files.concat(...results)
+      })
+    })
   }
 
   return allFiles(dir)
@@ -98,15 +100,18 @@ function getProjectName (packageFile) {
 }
 
 module.exports.getCandidates = function getCandidates (srcPath) {
-  return findNodeDirectories(srcPath)
-  .filter(entry => !!entry.nodeModules)
-  .map(entry => {
-    var allFiles = latestFileChanges(entry.dir)
-    var latestChange = maxBy(allFiles, file => {
-      return fs.statSync(file).mtime
+  return findNodeDirectories(srcPath).then(allResults => {
+    var results = allResults.filter(entry => !!entry.nodeModules);
+
+    var promises = results.map(entry => {
+      return latestFileChanges(entry.dir).then(allFiles => {
+        var latestChange = maxBy(allFiles, file => fs.statSync(file).mtime)
+        entry.latestChange = moment(fs.statSync(latestChange).mtime)
+        entry.name = getProjectName(entry.package)
+        return entry
+      })
     })
-    entry.latestChange = moment(fs.statSync(latestChange).mtime)
-    entry.name = getProjectName(entry.package)
-    return entry
+
+    return Promise.all(promises)
   })
 }

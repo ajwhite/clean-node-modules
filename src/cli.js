@@ -23,14 +23,16 @@ const spinner = new Ora();
 
 function cleanNodeModules (inputPath, force) {
   const srcPath = inputPath ? path.resolve(process.cwd(), inputPath) : process.cwd()
-  spinner.text = 'Gathering projects'
-  spinner.start()
 
-  const candidates = getCandidates(srcPath);
-  spinner.succeed()
-  // console.log(`found ${candidates.length} candidates`)
-  // console.log(candidates)
-  confirmRemoval(candidates);
+  spinner.text = 'Finding projects...'
+  spinner.start()
+  getCandidates(srcPath)
+    .then(projects => {
+      spinner.succeed(`Found ${projects.length} projects`)
+      confirmRemoval(projects)
+    }).catch(e => {
+      spinner.fail()
+    })
 }
 
 function promptMessage (project) {

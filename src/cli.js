@@ -47,7 +47,7 @@ function cleanNodeModules (inputPath, force, daysOld) {
 
 function promptMessage (project) {
   return [
-    `Purge ${project.name}?`,
+    `Clean ${project.name}?`,
     `  Last modified: ${project.latestChange.fromNow()}`,
     `  Path: ${project.dir}`
   ].join('\n')
@@ -74,12 +74,12 @@ function confirmRemoval(projects) {
   }).then(result => {
     const spinner = new Ora()
 
-    spinner.text = `Deleting ${project.name}`
+    spinner.text = `Cleaning ${project.name}`
     spinner.start()
 
     if (result.remove) {
       setTimeout(() => {
-        spinner.succeed(chalk.green(`Deleted ${project.name}`))
+        spinner.succeed(chalk.green(`Cleaned ${project.name}`))
         if (projects.length > 1) {
           confirmRemoval(projects.slice(1))
         }

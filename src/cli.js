@@ -13,10 +13,15 @@ const cli = meow(`
     $ clean-node-modules <directory>
 
   Options
-    --force, -f Force all prompts
+    -f, --force     Force all prompts
+    -d, --days-old  Only clean projects unmodified for a certain number of days
 
   Examples
-    $ clean-node-modules . -f
+    $ clean-node-modules -f
+      -> cleans all projects in the current directory
+
+    $ clean-node-modules ~/dev -f -d 30
+      -> cleans all projects in ~/dev that haven't been modified in 30 days
 `, {
   alias: {
     f: 'force',

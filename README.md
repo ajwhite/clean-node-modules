@@ -1,7 +1,28 @@
 Lets you find and remove `node_modules` from projects that haven't been touched in a while.
 
+## Install
 ```
-clean-node-modules .
+$ npm install --global clean-node-modules
+```
+
+## Usage
+
+```
+$ clean-node-modules --help
+
+  Usage
+    $ clean-node-modules <directory>
+
+  Options
+    -f, --force     Force all prompts
+    -d, --days-old  Only clean projects unmodified for a certain number of days
+
+  Examples
+    $ clean-node-modules -f
+      -> cleans all projects in the current directory
+
+    $ clean-node-modules ~/dev -f -d 30
+      -> cleans all projects in ~/dev that haven't been modified in 30 days
 ```
 
 ### Force Deletion
